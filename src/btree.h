@@ -49,38 +49,38 @@ const  int STRINGSIZE = 10;
 /**
  * @brief Number of key slots in B+Tree leaf for INTEGER key.
  */
-//                                                  sibling ptr             key               rid
-const  int INTARRAYLEAFSIZE = ( Page::SIZE - sizeof( PageId ) ) / ( sizeof( int ) + sizeof( RecordId ) );
+//                                                  sibling ptr     key_count             key               rid
+const  int INTARRAYLEAFSIZE = ( Page::SIZE - sizeof( PageId ) - sizeof(int)) / ( sizeof( int ) + sizeof( RecordId ));
 
 /**
  * @brief Number of key slots in B+Tree leaf for DOUBLE key.
  */
-//                                                     sibling ptr               key               rid
-const  int DOUBLEARRAYLEAFSIZE = ( Page::SIZE - sizeof( PageId ) ) / ( sizeof( double ) + sizeof( RecordId ) );
+//                                                     sibling ptr         key_count           key               rid
+const  int DOUBLEARRAYLEAFSIZE = ( Page::SIZE - sizeof( PageId )  - sizeof(int)) / ( sizeof( double ) + sizeof( RecordId ) );
 
 /**
  * @brief Number of key slots in B+Tree leaf for STRING key.
  */
-//                                                    sibling ptr           key                      rid
-const  int STRINGARRAYLEAFSIZE = ( Page::SIZE - sizeof( PageId ) ) / ( 10 * sizeof(char) + sizeof( RecordId ) );
+//                                                    sibling ptr          key_count              key             rid
+const  int STRINGARRAYLEAFSIZE = ( Page::SIZE - sizeof( PageId )  - sizeof(int)) / ( 10 * sizeof(char) + sizeof( RecordId ) );
 
 /**
  * @brief Number of key slots in B+Tree non-leaf for INTEGER key.
  */
-//                                                     level     extra pageNo                  key       pageNo
-const  int INTARRAYNONLEAFSIZE = ( Page::SIZE - sizeof( int ) - sizeof( PageId ) ) / ( sizeof( int ) + sizeof( PageId ) );
+//                                                     level     extra pageNo       key_count            key       pageNo
+const  int INTARRAYNONLEAFSIZE = ( Page::SIZE - sizeof( int ) - sizeof( PageId ) - sizeof(int)) / ( sizeof( int ) + sizeof( PageId ) );
 
 /**
  * @brief Number of key slots in B+Tree leaf for DOUBLE key.
  */
-//                                                        level        extra pageNo                 key            pageNo   -1 due to structure padding
-const  int DOUBLEARRAYNONLEAFSIZE = (( Page::SIZE - sizeof( int ) - sizeof( PageId ) ) / ( sizeof( double ) + sizeof( PageId ) )) - 1;
+//                                                        level        extra pageNo          key_count          key            pageNo   -1 due to structure padding
+const  int DOUBLEARRAYNONLEAFSIZE = (( Page::SIZE - sizeof( int ) - sizeof( PageId ) - sizeof(int)) / ( sizeof( double ) + sizeof( PageId ) ));
 
 /**
  * @brief Number of key slots in B+Tree leaf for STRING key.
  */
-//                                                        level        extra pageNo             key                   pageNo
-const  int STRINGARRAYNONLEAFSIZE = ( Page::SIZE - sizeof( int ) - sizeof( PageId ) ) / ( 10 * sizeof(char) + sizeof( PageId ) );
+//                                                        level        extra pageNo        key_count                       key                   pageNo
+const  int STRINGARRAYNONLEAFSIZE = ( Page::SIZE - sizeof( int ) - sizeof( PageId ) - sizeof(int)) / ( 10 * sizeof(char) + sizeof( PageId ) );
 
 /**
  * @brief Structure to store a key-rid pair. It is used to pass the pair to functions that 
@@ -165,128 +165,192 @@ node they are. The level memeber of each non leaf structure seen below is set to
 at this level are just above the leaf nodes. Otherwise set to 0.
 */
 
-/**
- * @brief Structure for all non-leaf nodes when the key is of INTEGER type.
-*/
-struct NonLeafNodeInt{
-  /**
-   * Level of the node in the tree.
-   */
-	int level;
+template <class T>
+struct NonLeafNode;
 
-  /**
-   * Stores keys.
-   */
-	int keyArray[ INTARRAYNONLEAFSIZE ];
-
-  /**
-   * Stores page numbers of child pages which themselves are other non-leaf/leaf nodes in the tree.
-   */
-	PageId pageNoArray[ INTARRAYNONLEAFSIZE + 1 ];
+template <>
+struct NonLeafNode<int> {
+    int level;
+    int keyArray[INTARRAYNONLEAFSIZE];
+    PageId pageNoArray[INTARRAYNONLEAFSIZE + 1];
+    int key_count;
 };
 
-/**
- * @brief Structure for all non-leaf nodes when the key is of DOUBLE type.
-*/
-struct NonLeafNodeDouble{
-  /**
-   * Level of the node in the tree.
-   */
-	int level;
-
-  /**
-   * Stores keys.
-   */
-	double keyArray[ DOUBLEARRAYNONLEAFSIZE ];
-
-  /**
-   * Stores page numbers of child pages which themselves are other non-leaf/leaf nodes in the tree.
-   */
-	PageId pageNoArray[ DOUBLEARRAYNONLEAFSIZE + 1 ];
+// Non-leaf node structure specialization for DOUBLE key
+template <>
+struct NonLeafNode<double> {
+    int level;
+    double keyArray[DOUBLEARRAYNONLEAFSIZE];
+    PageId pageNoArray[DOUBLEARRAYNONLEAFSIZE + 1];
+    int key_count;
 };
 
-/**
- * @brief Structure for all non-leaf nodes when the key is of STRING type.
-*/
-struct NonLeafNodeString{
-  /**
-   * Level of the node in the tree.
-   */
-	int level;
-
-  /**
-   * Stores keys.
-   */
-	char keyArray[ STRINGARRAYNONLEAFSIZE ][ STRINGSIZE ];
-
-  /**
-   * Stores page numbers of child pages which themselves are other non-leaf/leaf nodes in the tree.
-   */
-	PageId pageNoArray[ STRINGARRAYNONLEAFSIZE + 1 ];
+// Non-leaf node structure specialization for STRING key
+template <>
+struct NonLeafNode<std::string> {
+    int level;
+    char keyArray[STRINGARRAYNONLEAFSIZE][STRINGSIZE];
+    PageId pageNoArray[STRINGARRAYNONLEAFSIZE + 1];
+    int key_count;
 };
 
-/**
- * @brief Structure for all leaf nodes when the key is of INTEGER type.
-*/
-struct LeafNodeInt{
-  /**
-   * Stores keys.
-   */
-	int keyArray[ INTARRAYLEAFSIZE ];
+// /**
+//  * @brief Structure for all non-leaf nodes when the key is of INTEGER type.
+// */
+// struct NonLeafNodeInt{
+//   /**
+//    * Level of the node in the tree.
+//    */
+// 	int level;
 
-  /**
-   * Stores RecordIds.
-   */
-	RecordId ridArray[ INTARRAYLEAFSIZE ];
+//   /**
+//    * Stores keys.
+//    */
+// 	int keyArray[ INTARRAYNONLEAFSIZE ];
 
-  /**
-   * Page number of the leaf on the right side.
-	 * This linking of leaves allows to easily move from one leaf to the next leaf during index scan.
-   */
-	PageId rightSibPageNo;
+//   /**
+//    * Stores page numbers of child pages which themselves are other non-leaf/leaf nodes in the tree.
+//    */
+// 	PageId pageNoArray[ INTARRAYNONLEAFSIZE + 1 ];
+// };
+
+// /**
+//  * @brief Structure for all non-leaf nodes when the key is of DOUBLE type.
+// */
+// struct NonLeafNodeDouble{
+//   /**
+//    * Level of the node in the tree.
+//    */
+// 	int level;
+
+//   /**
+//    * Stores keys.
+//    */
+// 	double keyArray[ DOUBLEARRAYNONLEAFSIZE ];
+
+//   /**
+//    * Stores page numbers of child pages which themselves are other non-leaf/leaf nodes in the tree.
+//    */
+// 	PageId pageNoArray[ DOUBLEARRAYNONLEAFSIZE + 1 ];
+// };
+
+// /**
+//  * @brief Structure for all non-leaf nodes when the key is of STRING type.
+// */
+// struct NonLeafNodeString{
+//   /**
+//    * Level of the node in the tree.
+//    */
+// 	int level;
+
+//   /**
+//    * Stores keys.
+//    */
+// 	char keyArray[ STRINGARRAYNONLEAFSIZE ][ STRINGSIZE ];
+
+//   /**
+//    * Stores page numbers of child pages which themselves are other non-leaf/leaf nodes in the tree.
+//    */
+// 	PageId pageNoArray[ STRINGARRAYNONLEAFSIZE + 1 ];
+// };
+
+
+// Leaf node structure
+template <class T>
+struct LeafNode;
+
+// Leaf node structure specialization for INTEGER key
+template <>
+struct LeafNode<int> {
+    int keyArray[INTARRAYLEAFSIZE];
+    RecordId ridArray[INTARRAYLEAFSIZE];
+    PageId rightSibPageNo;
+    int key_count;
 };
 
-/**
- * @brief Structure for all leaf nodes when the key is of DOUBLE type.
-*/
-struct LeafNodeDouble{
-  /**
-   * Stores keys.
-   */
-	double keyArray[ DOUBLEARRAYLEAFSIZE ];
-
-  /**
-   * Stores RecordIds.
-   */
-	RecordId ridArray[ DOUBLEARRAYLEAFSIZE ];
-
-  /**
-   * Page number of the leaf on the right side.
-	 * This linking of leaves allows to easily move from one leaf to the next leaf during index scan.
-   */
-	PageId rightSibPageNo;
+// Leaf node structure specialization for DOUBLE key
+template <>
+struct LeafNode<double> {
+    double keyArray[DOUBLEARRAYLEAFSIZE];
+    RecordId ridArray[DOUBLEARRAYLEAFSIZE];
+    PageId rightSibPageNo;
+    int key_count;
 };
 
-/**
- * @brief Structure for all leaf nodes when the key is of STRING type.
-*/
-struct LeafNodeString{
-  /**
-   * Stores keys.
-   */
-	char keyArray[ STRINGARRAYLEAFSIZE ][ STRINGSIZE ];
-
-  /**
-   * Stores RecordIds.
-   */
-	RecordId ridArray[ STRINGARRAYLEAFSIZE ];
-
-  /**
-   * Page number of the leaf on the right side.
-	 * This linking of leaves allows to easily move from one leaf to the next leaf during index scan.
-   */
-	PageId rightSibPageNo;
+// Leaf node structure specialization for STRING key
+template <>
+struct LeafNode<std::string> {
+    char keyArray[STRINGARRAYLEAFSIZE][STRINGSIZE];
+    RecordId ridArray[STRINGARRAYLEAFSIZE];
+    PageId rightSibPageNo;
+    int key_count;
 };
+
+
+
+// /**
+//  * @brief Structure for all leaf nodes when the key is of INTEGER type.
+// */
+// struct LeafNodeInt{
+//   /**
+//    * Stores keys.
+//    */
+// 	int keyArray[ INTARRAYLEAFSIZE ];
+
+//   /**
+//    * Stores RecordIds.
+//    */
+// 	RecordId ridArray[ INTARRAYLEAFSIZE ];
+
+//   /**
+//    * Page number of the leaf on the right side.
+// 	 * This linking of leaves allows to easily move from one leaf to the next leaf during index scan.
+//    */
+// 	PageId rightSibPageNo;
+// };
+
+// /**
+//  * @brief Structure for all leaf nodes when the key is of DOUBLE type.
+// */
+// struct LeafNodeDouble{
+//   /**
+//    * Stores keys.
+//    */
+// 	double keyArray[ DOUBLEARRAYLEAFSIZE ];
+
+//   /**
+//    * Stores RecordIds.
+//    */
+// 	RecordId ridArray[ DOUBLEARRAYLEAFSIZE ];
+
+//   /**
+//    * Page number of the leaf on the right side.
+// 	 * This linking of leaves allows to easily move from one leaf to the next leaf during index scan.
+//    */
+// 	PageId rightSibPageNo;
+// };
+
+// /**
+//  * @brief Structure for all leaf nodes when the key is of STRING type.
+// */
+// struct LeafNodeString{
+//   /**
+//    * Stores keys.
+//    */
+// 	char keyArray[ STRINGARRAYLEAFSIZE ][ STRINGSIZE ];
+
+//   /**
+//    * Stores RecordIds.
+//    */
+// 	RecordId ridArray[ STRINGARRAYLEAFSIZE ];
+
+//   /**
+//    * Page number of the leaf on the right side.
+// 	 * This linking of leaves allows to easily move from one leaf to the next leaf during index scan.
+//    */
+// 	PageId rightSibPageNo;
+// };
+
 
 /**
  * @brief BTreeIndex class. It implements a B+ Tree index on a single attribute of a
@@ -398,8 +462,102 @@ class BTreeIndex {
    * High Operator. Can only be LT(<) or LTE(<=).
    */
 	Operator	highOp;
+  
+  std::string outIndexName;
 
-	
+  PageId nullPageNum;
+
+  PageId emptyPageNum;
+
+  Page* rootPage;
+
+  Page* nullPage;
+
+  Page* emptyPage;
+
+  NonLeafNode<int>* rootNodeInt;
+
+  NonLeafNode<double>* rootNodeDouble;
+
+  NonLeafNode<std::string>* rootNodeStr;
+
+  LeafNode<int>* currPageNode;
+
+  NonLeafNode<int>* leafParent;
+
+  LeafNode<int>* firstChild;
+
+  LeafNode<int>* emptyNode;
+
+
+  template <class T>
+  const void insertRecursive(PageId prevPageNum, PageId currentPageNum, T key, RecordId rid);
+  
+  template <class T>
+  PageId splitNonLeafNode(NonLeafNode<T>* nonLeafNode);
+
+	template <class T>
+  PageId splitLeafNode(LeafNode<T>* leafNode);
+
+  template <class T>
+  PageId findPageNoInNonLeaf(NonLeafNode<T>* nonLeafNode, T key);
+
+  template <class T>
+  void insertIntoLeafNode(LeafNode<T>* leafNode, T& key, RecordId& rid);
+
+  template <class T>
+  void insertIntoNonLeafNode(NonLeafNode<T>* nonLeafNode, PageId currPageNo, T key, PageId oldPageNo, PageId newPageNo);
+
+  template <class T>
+  T convert(const void* key);
+
+  template <class T>
+  bool query(Operator lowOp, T lowVal, Operator highOp, T highVal, T currVal);
+
+  // template <class T>
+  // bool isLeaf(Page* page);
+
+  const void copy(int& Lvalue, int Rvalue);
+
+  const void copy(double& Lvalue, double Rvalue);
+
+  const void copy(char Lvalue[], char Rvalue[]);
+
+  const void copy(int& Lvalue, std::string Rvalue);
+
+  const void copy(double& Lvalue, std::string Rvalue);
+
+  const void copy(char Lvalue[], std::string Rvalue);
+
+  const void copy(std::string Lvalue, std::string Rvalue);
+
+  const bool compare(int Lvalue, int Rvalue);
+
+  const bool compare(double Lvalue, double Rvalue);
+
+  const bool compare(char Lvalue[], char Rvalue[]);
+
+  const bool compare(std::string Lvalue, char Rvalue[]);
+
+  std::string null_str = "0000000000\0";
+
+  NonLeafNode<int>* curNonLeafInt;
+
+  NonLeafNode<double>* curNonLeafDouble;
+
+  NonLeafNode<std::string>* curNonLeafString;
+
+  LeafNode<int>* curLeafInt;
+
+  LeafNode<double>* curLeafDouble;
+
+  LeafNode<std::string>* curLeafString;
+
+  // const bool compare(std::string Lvalue, char Rvalue[10]);
+
+  // const bool compare(std::string Lvalue, int Rvalue);
+
+
  public:
 
   /**

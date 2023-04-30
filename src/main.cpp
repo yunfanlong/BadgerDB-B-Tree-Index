@@ -78,6 +78,7 @@ void test1();
 void test2();
 void test3();
 void errorTests();
+void additionalTest();
 void deleteRelation();
 
 int main(int argc, char **argv)
@@ -164,9 +165,10 @@ int main(int argc, char **argv)
 	File::remove(relationName);
 
 	test1();
-	test2();
-	test3();
-	//errorTests();
+	// test2();
+	// test3();
+	// additionalTest();
+	// errorTests();
 
   return 1;
 }
@@ -415,6 +417,7 @@ void intTests()
 {
   std::cout << "Create a B+ Tree index on the integer field" << std::endl;
   BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+  std::cout << intIndexName << std::endl;
 
 	// run some tests
 	checkPassFail(intScan(&index,25,GT,40,LT), 14)
@@ -494,7 +497,7 @@ void doubleTests()
 {
   std::cout << "Create a B+ Tree index on the double field" << std::endl;
   BTreeIndex index(relationName, doubleIndexName, bufMgr, offsetof(tuple,d), DOUBLE);
-
+  std::cout << doubleIndexName << std::endl;
 	// run some tests
 	checkPassFail(doubleScan(&index,25,GT,40,LT), 14)
 	checkPassFail(doubleScan(&index,20,GTE,35,LTE), 16)
@@ -573,6 +576,7 @@ void stringTests()
 {
   std::cout << "Create a B+ Tree index on the string field" << std::endl;
   BTreeIndex index(relationName, stringIndexName, bufMgr, offsetof(tuple,s), STRING);
+  std::cout << stringIndexName << std::endl;
 
 	// run some tests
 	checkPassFail(stringScan(&index,25,GT,40,LT), 14)
@@ -780,4 +784,19 @@ void deleteRelation()
 	catch(FileNotFoundException e)
 	{
 	}
+}
+
+void additionalTest() {
+
+	createRelationForward();
+
+	std::cout << "Create a B+ Tree index on the integer field" << std::endl;
+  	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+
+	// Run tests
+	checkPassFail(intScan(&index,123,GT,234,LT), 110);
+	checkPassFail(intScan(&index,-1000,GTE,5,LTE), 6);
+	checkPassFail(intScan(&index,-1000,GTE,5,LT), 5);
+	checkPassFail(intScan(&index,4999,GTE,5000,LT), 1);
+	checkPassFail(intScan(&index,4999,GT,6000,LT), 0);
 }
