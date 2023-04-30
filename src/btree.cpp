@@ -74,7 +74,10 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
         IndexMetaInfo* metaInfo = (IndexMetaInfo*)(headerPage);
 
         // Set the root page number
+        Page* rootPage;
         this->rootPageNum = metaInfo->rootPageNo;
+        this->bufMgr->readPage(this->file, this->rootPageNum, rootPage);
+        this->rootPage = rootPage;
 
         // Clean up
         this->bufMgr->unPinPage(file, headerPageNum, false); // Unpin the header page
@@ -185,8 +188,10 @@ BTreeIndex::~BTreeIndex()
         // Scan already ended or not started, do nothing
     }
 
+    this->bufMgr->unPinAllPages(this->file);
+    
     // Write any remaining changes to disk and clear buffer
-    this->bufMgr->flushFile(file);
+    this->bufMgr->flushFile(this->file);
 
     // Deallocate the BlobFile object representing the BTree index file
     delete file;

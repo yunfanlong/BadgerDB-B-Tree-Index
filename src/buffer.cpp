@@ -168,6 +168,18 @@ void BufMgr::unPinPage(File* file, const PageId pageNo,
   else bufDescTable[frameNo].pinCnt--;
 }
 
+void BufMgr::unPinAllPages(File* file) {
+  for (int i = 0; i < numBufs; i++) {
+    BufDesc* currBuf = &bufDescTable[i];
+    if (currBuf->valid && currBuf->file == file) {
+      if (currBuf->pinCnt >= 1) {
+        currBuf->pinCnt = 1;
+        this->unPinPage(file, currBuf->pageNo, true);
+      } 
+    }
+  }
+}
+
 void BufMgr::flushFile(const File* file) 
 {
   for (std::uint32_t i = 0; i < numBufs; i++)
