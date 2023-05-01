@@ -475,11 +475,11 @@ class BTreeIndex {
 
   Page* emptyPage;
 
-  NonLeafNode<int>* rootNodeInt;
+  NonLeafNode<int>* curNodeInt;
 
-  NonLeafNode<double>* rootNodeDouble;
+  NonLeafNode<double>* curNodeDouble;
 
-  NonLeafNode<std::string>* rootNodeStr;
+  NonLeafNode<std::string>* curNodeString;
 
   LeafNode<int>* currPageNode;
 
@@ -546,6 +546,12 @@ class BTreeIndex {
   NonLeafNode<double>* curNonLeafDouble;
 
   NonLeafNode<std::string>* curNonLeafString;
+
+  NonLeafNode<int>* rootNodeInt;
+
+  NonLeafNode<double>* rootNodeDouble;
+
+  NonLeafNode<std::string>* rootNodeStr;
 
   LeafNode<int>* curLeafInt;
 

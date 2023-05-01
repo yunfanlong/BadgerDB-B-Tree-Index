@@ -171,11 +171,9 @@ void BufMgr::unPinPage(File* file, const PageId pageNo,
 void BufMgr::unPinAllPages(File* file) {
   for (int i = 0; i < numBufs; i++) {
     BufDesc* currBuf = &bufDescTable[i];
-    if (currBuf->valid && currBuf->file == file) {
-      if (currBuf->pinCnt >= 1) {
-        currBuf->pinCnt = 1;
-        this->unPinPage(file, currBuf->pageNo, true);
-      } 
+    if (currBuf->valid) {
+      currBuf->pinCnt = 1;
+      this->unPinPage(file, currBuf->pageNo, true);
     }
   }
 }
