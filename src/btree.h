@@ -475,11 +475,35 @@ class BTreeIndex {
 
   Page* emptyPage;
 
+
+
+  NonLeafNode<int>* rootNodeInt;
+
+  NonLeafNode<double>* rootNodeDouble;
+
+  NonLeafNode<std::string>* rootNodeString;
+
+  LeafNode<int>* emptyNode;
+
+  LeafNode<int>* emptyNodeInt;
+
+  LeafNode<double>* emptyNodeDouble;
+
+  LeafNode<std::string>* emptyNodeString;
+
+  NonLeafNode<int>* nullNodeInt;
+
+  NonLeafNode<double>* nullNodeDouble;
+
+  NonLeafNode<std::string>* nullNodeString;
+
   NonLeafNode<int>* curNodeInt;
 
   NonLeafNode<double>* curNodeDouble;
 
   NonLeafNode<std::string>* curNodeString;
+
+
 
   LeafNode<int>* currPageNode;
 
@@ -487,7 +511,9 @@ class BTreeIndex {
 
   LeafNode<int>* firstChild;
 
-  LeafNode<int>* emptyNode;
+  PageId leafPageNum;
+
+  int foundInd;
 
 
   template <class T>
@@ -523,13 +549,14 @@ class BTreeIndex {
 
   const void copy(char Lvalue[], char Rvalue[]);
 
-  const void copy(int& Lvalue, std::string Rvalue);
-
-  const void copy(double& Lvalue, std::string Rvalue);
+  //for clear: copy(keyArray[cur], 0) case
+  const void copy(char Lvalue[], int Rvalue);
 
   const void copy(char Lvalue[], std::string Rvalue);
 
   const void copy(std::string Lvalue, std::string Rvalue);
+
+  const void copy(std::string& Lvalue, char Rvalue[]);
 
   const bool compare(int Lvalue, int Rvalue);
 
@@ -537,9 +564,9 @@ class BTreeIndex {
 
   const bool compare(char Lvalue[], char Rvalue[]);
 
-  const bool compare(std::string Lvalue, char Rvalue[]);
+  const bool compare(std::string& Lvalue, char Rvalue[]);
 
-  std::string null_str = "0000000000\0";
+  char null_str[10] = {};
 
   NonLeafNode<int>* curNonLeafInt;
 
@@ -547,17 +574,13 @@ class BTreeIndex {
 
   NonLeafNode<std::string>* curNonLeafString;
 
-  NonLeafNode<int>* rootNodeInt;
-
-  NonLeafNode<double>* rootNodeDouble;
-
-  NonLeafNode<std::string>* rootNodeStr;
-
   LeafNode<int>* curLeafInt;
 
   LeafNode<double>* curLeafDouble;
 
   LeafNode<std::string>* curLeafString;
+  
+  
 
   // const bool compare(std::string Lvalue, char Rvalue[10]);
 

@@ -17,8 +17,6 @@
 #include "exceptions/file_not_found_exception.h"
 #include "exceptions/end_of_file_exception.h"
 #include "exceptions/hash_already_present_exception.h"
-#include "exceptions/page_not_pinned_exception.h"
-#include "exceptions/page_pinned_exception.h"
 #include <typeinfo>
 #include <iostream>
 //#define DEBUG
@@ -35,26 +33,26 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 		const int attrByteOffset,
 		const Datatype attrType)
 {
-    this->scanExecuting = false;
-    this->bufMgr = bufMgrIn;
-    this->attributeType = attrType;
-    this->attrByteOffset = attrByteOffset;
+  this->scanExecuting = false;
+  this->bufMgr = bufMgrIn;
+  this->attributeType = attrType;
+  this->attrByteOffset = attrByteOffset;
 
-    switch (attrType)
-        {
-            case INTEGER: 
-                this->nodeOccupancy = INTARRAYNONLEAFSIZE;
-                this->leafOccupancy = INTARRAYLEAFSIZE;
-                break;
-            case DOUBLE:
-                this->nodeOccupancy = DOUBLEARRAYNONLEAFSIZE;
-                this->leafOccupancy = DOUBLEARRAYLEAFSIZE;
-                break;
-            case STRING:
-                this->nodeOccupancy = STRINGARRAYNONLEAFSIZE;
-                this->leafOccupancy = STRINGARRAYLEAFSIZE;
-                break;
-        }
+  switch (attrType)
+    {
+      case INTEGER: 
+        this->nodeOccupancy = INTARRAYNONLEAFSIZE;
+        this->leafOccupancy = INTARRAYLEAFSIZE;
+        break;
+      case DOUBLE:
+        this->nodeOccupancy = DOUBLEARRAYNONLEAFSIZE;
+        this->leafOccupancy = DOUBLEARRAYLEAFSIZE;
+        break;
+      case STRING:
+        this->nodeOccupancy = STRINGARRAYNONLEAFSIZE;
+        this->leafOccupancy = STRINGARRAYLEAFSIZE;
+        break;
+    }
 
     // Construct the index file name using the relation name and attribute offset
     std::ostringstream idxStr;
@@ -101,15 +99,16 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 
         Page* emptyPage;
         PageId emptyPageNo;
-        this->bufMgr->allocPage(file, emptyPageNo, emptyPage);
+        this->bufMgr->allocPage(file, emptyPageNo, rootPage);
         this->emptyPageNum = emptyPageNo;
         this->emptyPage = emptyPage;
 
         Page* nullPage;
         PageId nullPageNo;
-        this->bufMgr->allocPage(file, nullPageNo, nullPage);
+        this->bufMgr->allocPage(file, nullPageNo, rootPage);
         this->nullPageNum = nullPageNo;
         this->nullPage = nullPage;
+
 
         switch (attrType)
         {
@@ -120,7 +119,8 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
                 this->emptyNodeInt = (LeafNode<int>*) emptyPage;
                 this->emptyNodeInt->rightSibPageNo = 0;
                 this->rootNodeInt->pageNoArray[0] = emptyPageNum;
-
+                this->nullNodeInt = (NonLeafNode<int>*) nullPage;
+                this->nullNodeInt->level = 0;
                 break;
             }
             case DOUBLE:
@@ -130,18 +130,20 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
                 this->emptyNodeDouble = (LeafNode<double>*) emptyPage;
                 this->emptyNodeDouble->rightSibPageNo = 0;
                 this->rootNodeDouble->pageNoArray[0] = emptyPageNum;
-
+                this->nullNodeDouble = (NonLeafNode<double>*) nullPage;
+                this->nullNodeDouble->level = 0;
                 break;
             }
             case STRING:
             {
-                this->rootNodeString = reinterpret_cast<NonLeafNode<std::string>*>(rootPage);
-                this->rootNodeString  = reinterpret_cast<NonLeafNode<std::string>*>(rootPage);
-                this->rootNodeString ->level = 1;
+                NonLeafNode<std::string>* rootNode = reinterpret_cast<NonLeafNode<std::string>*>(rootPage);
+                this->rootNodeStr = reinterpret_cast<NonLeafNode<std::string>*>(rootPage);
+                this->rootNodeStr->level = 1;
                 this->emptyNodeString = (LeafNode<std::string>*) emptyPage;
                 this->emptyNodeString->rightSibPageNo = 0;
-                this->rootNodeString ->pageNoArray[0] = emptyPageNum;
-
+                this->rootNodeStr->pageNoArray[0] = emptyPageNum;
+                this->nullNodeString = (NonLeafNode<std::string>*) nullPage;
+                this->nullNodeString->level = 0;
                 break;
             }
             default:
@@ -163,7 +165,6 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
         FileScan fileScan(relationName, bufMgr);
         RecordId rid;
         std::string record;
-
         while (true) {
             try {
                 fileScan.scanNext(rid);
@@ -171,11 +172,27 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 
                 // Extract the key from the record based on the attribute type and offset
                 const void* key;
-                key = (const void*)(record.c_str() + attrByteOffset);
-                // Insert the entry into the index
-                insertEntry(key, rid);
+                switch (attrType)
+                {
+                    case INTEGER:
+                        key = (const void*)((const int*)(record.c_str()) + attrByteOffset);
+                        // Insert the entry into the index
+                        insertEntry(key, rid);
+                        break;
+                    case DOUBLE:
+                        key = (const void*)((const double*)(record.c_str()) + attrByteOffset);
+                        insertEntry(key, rid);
+                        break;
+                    case STRING:
+                        key = (const void*)((const char*)(record.c_str()) + attrByteOffset);
+                        insertEntry(key, rid);
+                        break;
+                    default:
+                        throw BadIndexInfoException(outIndexName);
+                }
             } catch (const EndOfFileException&) {
                 // Reached the end of the base relation
+                // NonLeafNode<int>* rootNode = (NonLeafNode<int>*) this->rootPage;
                 break;
             }
         }
@@ -194,16 +211,11 @@ BTreeIndex::~BTreeIndex()
         // Scan already ended or not started, do nothing
     }
 
-    try{
-        this->bufMgr->unPinAllPages(this->file);
-    } catch(PageNotPinnedException){
-
-    }
     // Write any remaining changes to disk and clear buffer
-    this->bufMgr->flushFile(this->file);
+    bufMgr->flushFile(file);
 
     // Deallocate the BlobFile object representing the BTree index file
-    delete this->file;
+    delete file;
 }
 
 // -----------------------------------------------------------------------------
@@ -212,29 +224,35 @@ BTreeIndex::~BTreeIndex()
 
 const void BTreeIndex::insertEntry(const void* key, const RecordId rid)
 {
-    if (this->attributeType == INTEGER){
-        insertRecursive<int>(this->nullPageNum, this->rootPageNum, *(int*)key, rid);
-        return;
-    } else if (this->attributeType == DOUBLE){
-        insertRecursive<double>(this->nullPageNum, this->rootPageNum, *(double*)(key), rid);
-        return;
-    } else if (this->attributeType == STRING){
-        std::string firstTenChar = std::string((char *)key).substr(0, 10);
-        insertRecursive<std::string>(this->nullPageNum, this->rootPageNum, firstTenChar, rid);
-        return;
-    } else {
-        throw BadIndexInfoException(this->outIndexName);
+    switch (this->attributeType)
+    {
+        case INTEGER:
+            insertRecursive<int>(this->nullPageNum, this->rootPageNum, *(int*)key, rid);
+            break;
+        case DOUBLE:
+            insertRecursive<double>(this->nullPageNum, this->rootPageNum, *(double*)(key), rid);
+            break;
+        case STRING:
+            char firstTenChar[10];
+		        strncpy(firstTenChar, (char *)key, 10);
+            insertRecursive<std::string>(this->nullPageNum, this->rootPageNum, firstTenChar, rid);
+            break;
+        default:
+            throw BadIndexInfoException(outIndexName);
     }
 }
 
 template <class T>
 const void BTreeIndex::insertRecursive(PageId prevPageNo, PageId currentPageNo, T key, RecordId rid)
 {
-    // Read the current page into memory
+    std::cout << "line 276";
+    // Read the data on current page num
     Page* currentPageData;
-    // Page* prevPageData;
     this->currentPageNum = currentPageNo;
-    this->bufMgr->readPage(this->file, currentPageNum, currentPageData);
+    this->bufMgr->readPage(this->file, currentPageNo, currentPageData);
+
+    //save the returned page to member var
+    this->currentPageData = currentPageData;
 
     Page* prevPageData;
 
@@ -247,50 +265,45 @@ const void BTreeIndex::insertRecursive(PageId prevPageNo, PageId currentPageNo, 
     {
         // at leaf layer
         LeafNode<T>* curLeafNode = reinterpret_cast<LeafNode<T>*>(currentPageData);
-        if (curLeafNode->key_count == leafOccupancy)
+        if (curLeafNode->key_count == this->leafOccupancy)
         {
             // Split the leaf node
             PageId newLeafPageNum = splitLeafNode<T>(curLeafNode);
             Page* newLeafPage;
             bufMgr->readPage(this->file, newLeafPageNum, newLeafPage);
-			//create new leaf node / page
+			      //create new leaf node / page
             LeafNode<T>* newLeafNode = (LeafNode<T>*)(newLeafPage);
 
             Page* prevPage;
             this->bufMgr->readPage(this->file, prevPageNo, prevPage);
-
             T keyToCopyUp;
             copy(keyToCopyUp, newLeafNode->keyArray[0]);
-
             NonLeafNode<T>* prevNonLeafNode = (NonLeafNode<T>*)(prevPage);
-
             // copy up the key into NonLeaf Node 
 			      insertIntoNonLeafNode<T>(prevNonLeafNode, prevPageNo, keyToCopyUp, currentPageNum, newLeafPageNum);
 
             // Check if the key should be inserted in the new or old leaf node
-            if (compare(key, newLeafNode->keyArray[0]))
-            {
-                // Insert the key in the new leaf node
-                insertIntoLeafNode<T>(newLeafNode, key, rid);
+            if (compare(key, newLeafNode->keyArray[0])){
+              // Insert the key in the new leaf node
+              insertIntoLeafNode<T>(newLeafNode, key, rid);
+            } else {
+              // Insert the key in the old leaf node
+              insertIntoLeafNode<T>(curLeafNode, key, rid);
             }
-            else
-            {
-                // Insert the key in the old leaf node
-                insertIntoLeafNode<T>(curLeafNode, key, rid);
-            }
-        }
-        else
-        {
+
+        } else {
+
             // Leaf node is not full, directly insert the key
-            insertIntoLeafNode<T>(curLeafNode, key, rid);
+          insertIntoLeafNode<T>(curLeafNode, key, rid);
         }
         return;
     }
     else
     {
+        
         NonLeafNode<T>* curNonLeafNode = reinterpret_cast<NonLeafNode<T>*>(currentPageData);
 
-		int orig_count = curNonLeafNode->key_count;
+		    int orig_count = curNonLeafNode->key_count;
 
         // Find the next node to follow based on the key
         PageId nextNodePageNum = findPageNoInNonLeaf<T>(curNonLeafNode, key);
@@ -309,33 +322,37 @@ const void BTreeIndex::insertRecursive(PageId prevPageNo, PageId currentPageNo, 
             NonLeafNode<T>* newNonLeafNode = (NonLeafNode<T>*)(newNonLeafPage);
             newNonLeafNode->level = curNonLeafNode->level;
             Page* prevPage;
+            // if (prevPageNo == this->nullPageNum) {
+            // } 
             this->bufMgr->readPage(this->file, prevPageNo, prevPage);
             
             T keyToPushUp;
             copy(keyToPushUp, newNonLeafNode->keyArray[0]);
-            copy(newNonLeafNode->keyArray[0] , 0);
 
-			// shift the key array over to cover the null key
+            copy(newNonLeafNode->keyArray[0] , null_str);
+
+			//TODO: explore index
             for (int i = 0; i < newNonLeafNode->key_count; i++) {
                 copy(newNonLeafNode->keyArray[i], newNonLeafNode->keyArray[i + 1]);
 				newNonLeafNode->pageNoArray[i] = newNonLeafNode->pageNoArray[i + 1];
             }
             newNonLeafNode->key_count -= 1;
             NonLeafNode<T>* prevNonLeafNode = (NonLeafNode<T>*)(prevPage);
-			insertIntoNonLeafNode<T>(prevNonLeafNode, prevPageNo, keyToPushUp, this->currentPageNum, newNonLeafPageNum);
+			      insertIntoNonLeafNode<T>(prevNonLeafNode, prevPageNo, keyToPushUp, this->currentPageNum, newNonLeafPageNum);
             this->bufMgr->unPinPage(this->file, currentPageNum, true);
             this->bufMgr->unPinPage(this->file, newNonLeafPageNum, true);
             this->bufMgr->unPinPage(this->file, this->rootPageNum, true);
         }
         else if (curNonLeafNode->key_count > orig_count)
         {
-            // Current non-leaf node is not full, directly insert the key
+            // Current non-leaf node is not full, the key must have been inserted when processing leaf.
             this->bufMgr->unPinPage(file, this->currentPageNum, true);
 
         } else {
             this->bufMgr->unPinPage(file, this->currentPageNum, false);
         }
-    }
+
+    }// end of else
 }
 
 template <class T>
@@ -353,13 +370,13 @@ PageId BTreeIndex::splitNonLeafNode(NonLeafNode<T>* nonLeafNode)
     NonLeafNode<T>* newNonLeafNode = (NonLeafNode<T>*)(newNonLeafPageData);
 
     // Calculate the split point
-    int splitIndex = nonLeafNode->key_count / 2;
-    int iterations = nonLeafNode->key_count;
+    int splitIndex = (this->nodeOccupancy) / 2 - 1;
+    int iterations = this->nodeOccupancy;
 
     // Move keys and page numbers to the right sibling
     for (int i = splitIndex; i < iterations; i++) {
         copy(newNonLeafNode->keyArray[i - splitIndex], nonLeafNode->keyArray[i]);
-        copy(nonLeafNode->keyArray[i], 0);
+        copy(nonLeafNode->keyArray[i], null_str);
         newNonLeafNode->pageNoArray[i - splitIndex + 1] = nonLeafNode->pageNoArray[i + 1];
         nonLeafNode->pageNoArray[i + 1] = 0;
     }
@@ -390,13 +407,14 @@ PageId BTreeIndex::splitLeafNode(LeafNode<T>* leafNode)
     LeafNode<T>* newLeafNode = (LeafNode<T>*)(newLeafPageData);
 
     // Calculate the split point
-    int splitIndex = leafNode->key_count / 2;
-    int iterations = leafNode->key_count;
+    int splitIndex = (this->leafOccupancy) / 2 - 1;
+    int iterations = this->leafOccupancy;
 
     // Move keys and record IDs to the right sibling
     for (int i = splitIndex; i < iterations; i++) {
         copy(newLeafNode->keyArray[i - splitIndex], leafNode->keyArray[i]);
-        copy(leafNode->keyArray[i] , 0);
+        //assign the old array positions value to 0 after transferring
+        copy(leafNode->keyArray[i] , null_str);
         newLeafNode->ridArray[i - splitIndex] = leafNode->ridArray[i];
     }
 
@@ -426,6 +444,7 @@ PageId BTreeIndex::findPageNoInNonLeaf(NonLeafNode<T>* nonLeafNode, T key)
     }
 }
 
+
 // Insert a new entry into a leaf node
 template <class T>
 void BTreeIndex::insertIntoLeafNode(LeafNode<T>* leafNode, T& key, RecordId& rid) {
@@ -441,6 +460,7 @@ void BTreeIndex::insertIntoLeafNode(LeafNode<T>* leafNode, T& key, RecordId& rid
     copy(leafNode->keyArray[insertPos], key);
     leafNode->ridArray[insertPos] = rid;
     leafNode->key_count += 1;
+    // }
 }
 
 // Insert a new entry into a non-leaf node
@@ -449,19 +469,19 @@ void BTreeIndex::insertIntoNonLeafNode(NonLeafNode<T>* nonLeafNode, PageId currP
     int insertPos = 0;
     if (currPageNo == this->nullPageNum) {
         Page* newRootPage;
-        PageId newRootNum;
+        PageId newRootPageNum;
         try {
-            this->bufMgr->allocPage(this->file, newRootNum, newRootPage);
+            this->bufMgr->allocPage(this->file, newRootPageNum, newRootPage);
         } catch (HashAlreadyPresentException e) {
 
         }
-        this->rootPageNum = newRootNum;
+        this->rootPageNum = newRootPageNum;
         NonLeafNode<T>* newRootNode = (NonLeafNode<T>*) newRootPage;
         newRootNode->level = 0;
         copy(newRootNode->keyArray[0], key);
         newRootNode->pageNoArray[0] = oldPageNo;
         newRootNode->pageNoArray[1] = newPageNo;
-        this->bufMgr->unPinPage(this->file, newRootNum, true);
+        this->bufMgr->unPinPage(this->file, newRootPageNum, true);
     } else {
         while (insertPos < nonLeafNode->key_count && compare(key, nonLeafNode->keyArray[insertPos]))  {
             insertPos++;
@@ -506,8 +526,12 @@ const bool BTreeIndex::compare(double Lvalue, double Rvalue){
     return Lvalue > Rvalue;
 }
 
-const bool BTreeIndex::compare(std::string& Lvalue, char Rvalue[]){
-    return Lvalue > std::string(Rvalue).substr(0, 10);
+const bool BTreeIndex::compare(char Lvalue[], char Rvalue[]){
+    return strncmp(Lvalue, Rvalue, 10);
+}
+
+const bool BTreeIndex::compare(std::string Lvalue, char Rvalue[]){
+    return 1;
 }
 
 const void BTreeIndex::copy(int& Lvalue, int Rvalue){
@@ -522,10 +546,6 @@ const void BTreeIndex::copy(char Lvalue[], char Rvalue[]){
     strncpy(Lvalue, Rvalue, 10);
 }
 
-const void BTreeIndex::copy(std::string& Lvalue, char Rvalue[]){
-    Lvalue = std::string(Rvalue).substr(0, 10);
-}
-
 const void BTreeIndex::copy(char Lvalue[], std::string Rvalue){
     strncpy(Lvalue, Rvalue.c_str(), 10);
 }
@@ -534,300 +554,78 @@ const void BTreeIndex::copy(std::string Lvalue, std::string Rvalue){
     Lvalue = Rvalue;
 }
 
-const void BTreeIndex::copy(char Lvalue[], int Rvalue){
-    strncpy(Lvalue, null_str, 10);
+const void BTreeIndex::copy(int& Lvalue, std::string Rvalue){
+    Lvalue = 0;
 }
 
-// -----------------------------------------------------------------------------
-// BTreeIndex::startScan
-// -----------------------------------------------------------------------------
+const void BTreeIndex::copy(double& Lvalue, std::string Rvalue){
+    Lvalue = 0.0;
+}
+
 
 const void BTreeIndex::startScan(const void* lowValParm,
 				   const Operator lowOpParm,
 				   const void* highValParm,
 				   const Operator highOpParm) {
-
-	if(lowOpParm != GT && lowOpParm != GTE) {
+	// check operands
+	if((lowOpParm != GT && lowOpParm != GTE) || (highOpParm != LT && highOpParm != LTE)) {
 		throw BadOpcodesException();
 	}
+  this->scanExecuting = true;
 
-    if(highOpParm != LT && highOpParm != LTE) {
-        throw BadOpcodesException();
-    }
+  this->lowOp = lowOpParm; 
+  this->highOp = highOpParm;
 
-    this->scanExecuting = true;
-
-    this->lowOp = lowOpParm; 
-    this->highOp = highOpParm;
-
+	// if lowVal > highVal throw exception
 	if(this->attributeType == INTEGER) {
 		this->lowValInt = *((int*)lowValParm);
 		this->highValInt = *((int*)highValParm);
 
-        // if lowVal > highVal throw exception
-        if (this->lowValInt > this->highValInt) {
-            throw BadScanrangeException();
+    if (this->lowValInt > this->highValInt) {
+      throw BadScanrangeException();
+    }
+
+    PageId curPageNum = this->rootPageNum;
+    Page* curPage;
+    this->bufMgr->readPage(this->file, curPageNum, curPage);
+    NonLeafNode<int>* curPageNode = (NonLeafNode<int>*)curPage;
+    PageId nextPageNum;
+
+    while (curPageNode->level != 1){
+      nextPageNum = findPageNoInNonLeaf(curPageNode, lowValInt);
+      this->bufMgr->readPage(this->file, nextPageNum, curPage);
+      curPageNode = (NonLeafNode<int>*) curPage;
+    }
+
+    Page* leafPage;
+    PageId leafPageNo = findPageNoInNonLeaf(curPageNode, lowValInt);
+    this->bufMgr->readPage(this->file, leafPageNo, leafPage);
+    LeafNode<int>* leafNode = (LeafNode<int>*)leafPage;
+
+    while (true) {
+      for (int i = 0; i < leafNode->key_count; i++){
+        if (lowOpParm == GTE && highOpParm == LTE && leafNode->keyArray[i] >= lowValInt && leafNode->keyArray[i] <= highValInt) {
+          this->currentPageNum = leafPageNo;
+          this->currentPageData = leafPage;
+          this->nextEntry = i;
+
+          return;
+        } else if (lowOpParm == GT && leafNode->keyArray[i] > lowValInt) {
+          this->currentPageNum = leafPageNo;
+          this->currentPageData = leafPage;
+          this->nextEntry = i;
+          return;
         }
-
-        PageId curPageNum = this->rootPageNum;
-        Page* curPage;
-        this->bufMgr->readPage(this->file, curPageNum, curPage);
-        this->curNodeInt = (NonLeafNode<int>*)curPage;
-        PageId nextPageNum;
-
-        // traverse until one level above leaf
-        while (this->curNodeInt->level != 1){
-            nextPageNum = findPageNoInNonLeaf<int>(this->curNodeInt, lowValInt);
-            this->bufMgr->readPage(this->file, nextPageNum, curPage);
-            this->curNodeInt = (NonLeafNode<int>*) curPage;
-        }
-
-        // find the leaf node that is at least greater than lowVal
-        Page* leafPage;
-        PageId leafPageNo = findPageNoInNonLeaf<int>(this->curNodeInt, lowValInt);
-        this->bufMgr->readPage(this->file, leafPageNo, leafPage);
-        LeafNode<int>* leafNode = (LeafNode<int>*)leafPage;
-
-        // scan to see a valid key exists
-        for (int i = 0; i < leafNode->key_count; i++){
-            if (lowOpParm == GTE && leafNode->keyArray[i] >= lowValInt) {
-                this->currentPageNum = leafPageNo;
-                this->currentPageData = leafPage;
-                this->nextEntry = i;
-                return;
-            } else if (lowOpParm == GT && leafNode->keyArray[i] > lowValInt) {
-                this->currentPageNum = leafPageNo;
-                this->currentPageData = leafPage;
-                this->nextEntry = i;
-                return;
-            }
-        }
-
-        // move to the right neighbor if all keys of the current node are
-        // not good
-        if (leafNode->rightSibPageNo != 0){
-            this->currentPageNum = leafNode->rightSibPageNo;
-            this->bufMgr->readPage(this->file, this->currentPageNum, this->currentPageData);
-            this->nextEntry = 0;
-            return;
-        }
-        
-        // No such key for the whole loop, throw exception
-        this->scanExecuting = false;
-        throw NoSuchKeyFoundException();
-    } else if(this->attributeType == DOUBLE) {
-        this->lowValDouble = *((double*)lowValParm);
-        this->highValDouble = *((double*)highValParm);
-
-        if (this->lowValDouble > this->highValDouble) {
-            throw BadScanrangeException();
-        }
-
-        PageId curPageNum = this->rootPageNum;
-        Page* curPage;
-        this->bufMgr->readPage(this->file, curPageNum, curPage);
-        this->curNodeDouble = (NonLeafNode<double>*)curPage;
-        PageId nextPageNum;
-
-        while (this->curNodeDouble->level != 1){
-            nextPageNum = findPageNoInNonLeaf<double>(this->curNodeDouble, lowValDouble);
-            this->bufMgr->readPage(this->file, nextPageNum, curPage);
-            this->curNodeDouble = (NonLeafNode<double>*) curPage;
-        }
-
-        Page* leafPage;
-        PageId leafPageNo = findPageNoInNonLeaf<double>(this->curNodeDouble, lowValDouble);
-        this->bufMgr->readPage(this->file, leafPageNo, leafPage);
-        LeafNode<double>* leafNode = (LeafNode<double>*)leafPage;
-
-        for (int i = 0; i < leafNode->key_count; i++){
-            if (lowOpParm == GTE && leafNode->keyArray[i] >= lowValDouble) {
-            this->currentPageNum = leafPageNo;
-            this->currentPageData = leafPage;
-            this->nextEntry = i;
-            return;
-            } else if (lowOpParm == GT && leafNode->keyArray[i] > lowValDouble) {
-            this->currentPageNum = leafPageNo;
-            this->currentPageData = leafPage;
-            this->nextEntry = i;
-            return;
-            }
-        }
+      }
 
         //No such key for the whole loop, throw exception
-        if (leafNode->rightSibPageNo != 0){
-            this->currentPageNum = leafNode->rightSibPageNo;
-            this->bufMgr->readPage(this->file, this->currentPageNum, this->currentPageData);
-            this->nextEntry = 0;
-            return;
-        }
-        
-        this->scanExecuting = false;
-        throw NoSuchKeyFoundException();
-    } else if(this->attributeType == STRING) {
-        this->lowValString = std::string((char*)lowValParm).substr(0, 10);
-        this->highValString = std::string((char*)highValParm).substr(0, 10);;
-
-        if (this->lowValString > this->highValString) {
-            throw BadScanrangeException();
-        }
-
-        PageId curPageNum = this->rootPageNum;
-        Page* curPage;
-        this->bufMgr->readPage(this->file, curPageNum, curPage);
-        this->curNodeString = (NonLeafNode<std::string>*)curPage;
-        PageId nextPageNum;
-
-        while (this->curNodeString->level != 1){
-            nextPageNum = findPageNoInNonLeaf<std::string>(this->curNodeString, lowValString);
-            this->bufMgr->readPage(this->file, nextPageNum, curPage);
-            this->curNodeString = (NonLeafNode<std::string>*) curPage;
-        }
-
-        Page* leafPage;
-        PageId leafPageNo = findPageNoInNonLeaf<std::string>(this->curNodeString, lowValString);
-        this->bufMgr->readPage(this->file, leafPageNo, leafPage);
-        LeafNode<std::string>* leafNode = (LeafNode<std::string>*)leafPage;
-
-        for (int i = 0; i < leafNode->key_count; i++){
-            if (lowOpParm == GTE && (std::string(leafNode->keyArray[i]).substr(0, 10) >= lowValString)) {
-            this->currentPageNum = leafPageNo;
-            this->currentPageData = leafPage;
-            this->nextEntry = i;
-            return;
-            } else if (lowOpParm == GT && (std::string(leafNode->keyArray[i]).substr(0, 10) > lowValString)) {
-            this->currentPageNum = leafPageNo;
-            this->currentPageData = leafPage;
-            this->nextEntry = i;
-            return;
-            }
-        }
-
-        //No such key for the whole loop, throw exception
-        if (leafNode->rightSibPageNo != 0){
-            this->currentPageNum = leafNode->rightSibPageNo;
-            this->bufMgr->readPage(this->file, this->currentPageNum, this->currentPageData);
-            this->nextEntry = 0;
-            return;
-        }
-        
-        this->scanExecuting = false;
-        throw NoSuchKeyFoundException();
-    }
-} 
-
-// -----------------------------------------------------------------------------
-// BTreeIndex::scanNext
-// -----------------------------------------------------------------------------
-
-const void BTreeIndex::scanNext(RecordId& outRid)
-{
-    if(!scanExecuting)
-    {
-        throw ScanNotInitializedException();
-    }
-
-    if (this->attributeType == INTEGER){
-        LeafNode<int>* currentNodeInt = (LeafNode<int>*) this->currentPageData;
-        // if at the end of a node, check its right neighbor
-        if(nextEntry == currentNodeInt->key_count || currentNodeInt->ridArray[nextEntry].page_number == 0)
-        {
-            // if no right neighbor, then scan complete
-            if(currentNodeInt->rightSibPageNo == 0)
-            {
-                throw IndexScanCompletedException();
-            }
-            this->currentPageNum = currentNodeInt->rightSibPageNo;
-            this->bufMgr->readPage(file, this->currentPageNum, this->currentPageData);
-            currentNodeInt = (LeafNode<int>*) this->currentPageData;
-            // nextEntry must be reset to 0
-            nextEntry = 0;
-        }
-    
-        // Check to make sure the key is in valid range
-        int key = currentNodeInt->keyArray[nextEntry];
-
-        if (query(this->lowOp, this->lowValInt, this->highOp, this->highValInt, key)){
-            outRid = currentNodeInt->ridArray[nextEntry];
-            nextEntry++;
-            return;
-        }  else {
-            throw IndexScanCompletedException();
-        }
-        return;
-
-    } else if (this->attributeType == DOUBLE){
-        LeafNode<double>* currentNodeDouble = (LeafNode<double>*) this->currentPageData;
-        if(nextEntry == currentNodeDouble->key_count || currentNodeDouble->ridArray[nextEntry].page_number == 0)
-        {
-            //if failed, then scan complete
-            if(currentNodeDouble->rightSibPageNo == 0)
-            {
-                throw IndexScanCompletedException();
-            }
-            this->currentPageNum = currentNodeDouble->rightSibPageNo;
-            this->bufMgr->readPage(file, this->currentPageNum, this->currentPageData);
-            currentNodeDouble = (LeafNode<double>*) this->currentPageData;
-            // nextEntry must be reset to 0
-            nextEntry = 0;
-        }
-        
-        // Check to make sure the key is in valid range
-        double key = currentNodeDouble->keyArray[nextEntry];
-
-        if (query(this->lowOp, this->lowValDouble, this->highOp, this->highValDouble, key)){
-            outRid = currentNodeDouble->ridArray[nextEntry];
-            nextEntry++;
-            return;
-        } else {
-            throw IndexScanCompletedException();
-        }
-    } else {
-        LeafNode<std::string>* currentNodeString = (LeafNode<std::string>*) this->currentPageData;
-        if(nextEntry == currentNodeString->key_count || currentNodeString->ridArray[nextEntry].page_number == 0)
-        {
-            if(currentNodeString->rightSibPageNo == 0)
-            {
-                throw IndexScanCompletedException();
-            }
-            this->currentPageNum = currentNodeString->rightSibPageNo;
-            this->bufMgr->readPage(file, this->currentPageNum, this->currentPageData);
-            currentNodeString = (LeafNode<std::string>*) this->currentPageData;
-            // nextEntry must be reset to 0
-            nextEntry = 0;
-        }
-    
-        // Check to make sure the key is in valid range
-        std::string key;
-        key = std::string(currentNodeString->keyArray[nextEntry]).substr(0, 10);
-
-        if (query(this->lowOp, this->lowValString, this->highOp, this->highValString, key)){
-            outRid = currentNodeString->ridArray[nextEntry];
-            nextEntry++;
-            return;
-        } else {
-            throw IndexScanCompletedException();
+        if (leafNode->rightSibPageNo == 0){
+          this->scanExecuting = false;
+          throw NoSuchKeyFoundException();
         }
     }
-    return;
-}
-
-// -----------------------------------------------------------------------------
-// BTreeIndex::endScan
-// -----------------------------------------------------------------------------
-
-const void BTreeIndex::endScan() 
-{
-    // Ensure a scan is currently executing
-    if (!scanExecuting) {
-        throw ScanNotInitializedException();
-    }
-
-    // we will unpin all pages all at once during destruction
-    
-    // Reset scan state
-    this->scanExecuting = false;
-    
-}
-
+      
+      this->leafPageNum = leafNode->rightSibPageNo;
+      this->foundInd = 0;
+  }
 }

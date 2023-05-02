@@ -19,6 +19,7 @@
 #include "exceptions/bad_opcodes_exception.h"
 #include "exceptions/scan_not_initialized_exception.h"
 #include "exceptions/end_of_file_exception.h"
+#include <iostream> // load cout
 
 #define checkPassFail(a, b) 																				\
 {																																		\
@@ -77,8 +78,8 @@ int stringScan(BTreeIndex *index, int lowVal, Operator lowOp, int highVal, Opera
 void test1();
 void test2();
 void test3();
-void errorTests();
 void additionalTest();
+void errorTests();
 void deleteRelation();
 
 int main(int argc, char **argv)
@@ -164,11 +165,11 @@ int main(int argc, char **argv)
 
 	File::remove(relationName);
 
-	test1();
+	// test1();
 	// test2();
 	// test3();
 	// additionalTest();
-	// errorTests();
+	errorTests();
 
   return 1;
 }
@@ -270,6 +271,7 @@ void createRelationBackward()
 	{
 	}
   file1 = new PageFile(relationName, true);
+  
 
   // initialize all of record1.s to keep purify happy
   memset(record1.s, ' ', sizeof(record1.s));
@@ -376,7 +378,7 @@ void indexTests()
 {
   if(testNum == 1)
   {
-    // intTests();
+    intTests();
 		try
 		{
 			File::remove(intIndexName);
@@ -384,7 +386,6 @@ void indexTests()
   	catch(FileNotFoundException e)
   	{
   	}
-	intTests();
   }
   else if(testNum == 2)
   {
@@ -418,7 +419,6 @@ void intTests()
 {
   std::cout << "Create a B+ Tree index on the integer field" << std::endl;
   BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-  std::cout << intIndexName << std::endl;
 
 	// run some tests
 	checkPassFail(intScan(&index,25,GT,40,LT), 14)
@@ -498,7 +498,7 @@ void doubleTests()
 {
   std::cout << "Create a B+ Tree index on the double field" << std::endl;
   BTreeIndex index(relationName, doubleIndexName, bufMgr, offsetof(tuple,d), DOUBLE);
-  std::cout << doubleIndexName << std::endl;
+
 	// run some tests
 	checkPassFail(doubleScan(&index,25,GT,40,LT), 14)
 	checkPassFail(doubleScan(&index,20,GTE,35,LTE), 16)
@@ -577,7 +577,6 @@ void stringTests()
 {
   std::cout << "Create a B+ Tree index on the string field" << std::endl;
   BTreeIndex index(relationName, stringIndexName, bufMgr, offsetof(tuple,s), STRING);
-  std::cout << stringIndexName << std::endl;
 
 	// run some tests
 	checkPassFail(stringScan(&index,25,GT,40,LT), 14)
@@ -652,6 +651,74 @@ int stringScan(BTreeIndex * index, int lowVal, Operator lowOp, int highVal, Oper
   std::cout << std::endl;
 
 	return numResults;
+}
+
+// -----------------------------------------------------------------------------
+// additionalTests
+// -----------------------------------------------------------------------------
+
+void additionalTest() {
+
+	createRelationRandom();
+
+	if (testNum == 1) {
+		try
+		{
+			File::remove(intIndexName);
+		}
+		catch(FileNotFoundException e)
+		{
+		}
+
+		std::cout << "Create a B+ Tree index on the integer field" << std::endl;
+		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+
+		// Run tests
+		checkPassFail(intScan(&index,123,GT,234,LT), 110);
+		checkPassFail(intScan(&index,-1000,GTE,5,LTE), 6);
+		checkPassFail(intScan(&index,-1000,GTE,5,LT), 5);
+		checkPassFail(intScan(&index,4999,GTE,5000,LT), 1);
+		checkPassFail(intScan(&index,4999,GT,6000,LT), 0);
+		checkPassFail(intScan(&index, 1234,GT,4567,LTE), 3333);
+	} else if (testNum == 2) {
+		try
+		{
+			File::remove(doubleIndexName);
+		}
+		catch(FileNotFoundException e)
+		{
+		}
+
+		std::cout << "Create a B+ Tree index on the double field" << std::endl;
+		BTreeIndex index(relationName, doubleIndexName, bufMgr, offsetof(tuple,d), DOUBLE);
+
+		// Run tests
+		checkPassFail(doubleScan(&index,123,GT,234,LT), 110);
+		checkPassFail(doubleScan(&index,-1000,GTE,5,LTE), 6);
+		checkPassFail(doubleScan(&index,-1000,GTE,5,LT), 5);
+		checkPassFail(doubleScan(&index,4999,GTE,5000,LT), 1);
+		checkPassFail(doubleScan(&index,4999,GT,6000,LT), 0);
+		checkPassFail(doubleScan(&index, 1234,GT,4567,LTE), 3333);
+	} else {
+		try
+		{
+			File::remove(stringIndexName);
+		}
+		catch(FileNotFoundException e)
+		{
+		}
+
+		std::cout << "Create a B+ Tree index on the double field" << std::endl;
+		BTreeIndex index(relationName, stringIndexName, bufMgr, offsetof(tuple,s), STRING);
+
+		// Run tests
+		checkPassFail(stringScan(&index,123,GT,234,LT), 110);
+		checkPassFail(stringScan(&index,-1000,GTE,5,LTE), 6);
+		checkPassFail(stringScan(&index,-1000,GTE,5,LT), 5);
+		checkPassFail(stringScan(&index,4999,GTE,5000,LT), 1);
+		checkPassFail(stringScan(&index,4999,GT,6000,LT), 0);
+		checkPassFail(stringScan(&index, 1234,GT,4567,LTE), 3333);
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -784,69 +851,5 @@ void deleteRelation()
 	}
 	catch(FileNotFoundException e)
 	{
-	}
-}
-
-void additionalTest() {
-
-	createRelationRandom();
-
-	if (testNum == 1) {
-		try
-		{
-			File::remove(intIndexName);
-		}
-		catch(FileNotFoundException e)
-		{
-		}
-
-		std::cout << "Create a B+ Tree index on the integer field" << std::endl;
-		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-
-		// Run tests
-		checkPassFail(intScan(&index,123,GT,234,LT), 110);
-		checkPassFail(intScan(&index,-1000,GTE,5,LTE), 6);
-		checkPassFail(intScan(&index,-1000,GTE,5,LT), 5);
-		checkPassFail(intScan(&index,4999,GTE,5000,LT), 1);
-		checkPassFail(intScan(&index,4999,GT,6000,LT), 0);
-		checkPassFail(intScan(&index, 1234,GT,4567,LTE), 3333);
-	} else if (testNum == 2) {
-		try
-		{
-			File::remove(doubleIndexName);
-		}
-		catch(FileNotFoundException e)
-		{
-		}
-
-		std::cout << "Create a B+ Tree index on the double field" << std::endl;
-		BTreeIndex index(relationName, doubleIndexName, bufMgr, offsetof(tuple,d), DOUBLE);
-
-		// Run tests
-		checkPassFail(doubleScan(&index,123,GT,234,LT), 110);
-		checkPassFail(doubleScan(&index,-1000,GTE,5,LTE), 6);
-		checkPassFail(doubleScan(&index,-1000,GTE,5,LT), 5);
-		checkPassFail(doubleScan(&index,4999,GTE,5000,LT), 1);
-		checkPassFail(doubleScan(&index,4999,GT,6000,LT), 0);
-		checkPassFail(doubleScan(&index, 1234,GT,4567,LTE), 3333);
-	} else {
-		try
-		{
-			File::remove(stringIndexName);
-		}
-		catch(FileNotFoundException e)
-		{
-		}
-
-		std::cout << "Create a B+ Tree index on the double field" << std::endl;
-		BTreeIndex index(relationName, stringIndexName, bufMgr, offsetof(tuple,s), STRING);
-
-		// Run tests
-		checkPassFail(stringScan(&index,123,GT,234,LT), 110);
-		checkPassFail(stringScan(&index,-1000,GTE,5,LTE), 6);
-		checkPassFail(stringScan(&index,-1000,GTE,5,LT), 5);
-		checkPassFail(stringScan(&index,4999,GTE,5000,LT), 1);
-		checkPassFail(stringScan(&index,4999,GT,6000,LT), 0);
-		checkPassFail(stringScan(&index, 1234,GT,4567,LTE), 3333);
 	}
 }

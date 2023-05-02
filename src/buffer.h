@@ -240,7 +240,6 @@ class BufMgr
 	 */
   void unPinPage(File* file, const PageId PageNo, const bool dirty);
 
-  void unPinAllPages(File* file);
 	/**
 	 * Allocates a new, empty page in the file and returns the Page object.
 	 * The newly allocated page is also assigned a frame in the buffer pool.
@@ -270,6 +269,8 @@ class BufMgr
 	 * @param PageNo  Page number
 	 */
   void disposePage(File* file, const PageId PageNo);
+
+  void unPinAllPages(File* file);
 
 	/**
    * Print member variable values. 
