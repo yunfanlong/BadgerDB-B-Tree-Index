@@ -270,8 +270,6 @@ class BufMgr
 	 */
   void disposePage(File* file, const PageId PageNo);
 
-  void unPinAllPages(File* file);
-
 	/**
    * Print member variable values. 
 	 */
